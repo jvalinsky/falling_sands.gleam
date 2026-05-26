@@ -1,0 +1,26 @@
+[
+  {
+    "hash": "e70723c51257bf6c5b3015e1dbd9fa756f6c37f8",
+    "short_hash": "e70723c",
+    "author": "Jack Valinsky",
+    "date": "2026-03-12T08:56:38-04:00",
+    "message": "test: grid and simulation tests\n\nAmp-Thread-ID: https://ampcode.com/threads/T-019ce217-d07e-7717-b9f3-68a34fe9f201\nCo-authored-by: Amp <amp@ampcode.com>",
+    "files_changed": 2
+  },
+  {
+    "hash": "4762eed5f8a55ab54d134fbaf48ab734e9452492",
+    "short_hash": "4762eed",
+    "author": "Jack Valinsky",
+    "date": "2026-03-12T08:56:36-04:00",
+    "message": "feat: renderer and Paint interactive app (drawing, keyboard controls, game loop)\n\nAmp-Thread-ID: https://ampcode.com/threads/T-019ce217-d07e-7717-b9f3-68a34fe9f201\nCo-authored-by: Amp <amp@ampcode.com>",
+    "files_changed": 2
+  },
+  {
+    "hash": "ef515b95b948e26cf93b8a252841b9e0f3a2f1b7",
+    "short_hash": "ef515b9",
+    "author": "Jack Valinsky",
+    "date": "2026-03-12T08:56:33-04:00",
+    "message": "feat: core simulation engine (sparse grid, Margolus neighbourhood physics)\n\nAmp-Thread-ID: https://ampcode.com/threads/T-019ce217-d07e-7717-b9f3-68a34fe9f201\nCo-authored-by: Amp <amp@ampcode.com>",
+    "files_changed": 2
+  }
+]
