@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gleam new . --template javascript)",
+      "WebSearch",
+      "WebFetch(domain:hexdocs.pm)",
+      "Bash(gleam build --target javascript)",
+      "Bash(gleam docs build --target javascript)",
+      "Bash(test -d /Users/jack/Software/lucy_game/priv/javascript/paint)",
+      "Bash(node build.mjs)",
+      "Bash(gleam test)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

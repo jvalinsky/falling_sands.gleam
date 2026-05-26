@@ -2,14 +2,14 @@
 /// Built with Paint for JavaScript target
 import gleam/float
 import gleam/int
-import gleam/io
+import gleam/list
 import paint
 import paint/canvas
 import paint/event
 
 import grid.{type CellType, type Grid}
 import renderer
-import simulation.{type SimState}
+import sim_bridge
 
 // ============================================================================
 // MODEL
@@ -17,7 +17,6 @@ import simulation.{type SimState}
 
 pub type Model {
   Model(
-    sim_state: SimState,
     grid: Grid,
     is_running: Bool,
     paused: Bool,
@@ -27,14 +26,14 @@ pub type Model {
     steps_per_frame: Int,
     pixel_scale: Int,
     mouse_down: Bool,
+    fps: Float,
+    worker_timing: String,
   )
 }
 
 fn init(_config: canvas.Config) -> Model {
-  let _ = io.println("🎮 Lucy Game - Initializing model...")
-  let initial_grid = grid.filled_with_air(160, 100)
-  let model = Model(
-    sim_state: simulation.new(initial_grid),
+  let initial_grid = sim_bridge.init_grid(160, 100)
+  Model(
     grid: initial_grid,
     is_running: False,
     paused: False,
@@ -44,10 +43,9 @@ fn init(_config: canvas.Config) -> Model {
     steps_per_frame: 4,
     pixel_scale: 6,
     mouse_down: False,
+    fps: 0.0,
+    worker_timing: "",
   )
-  let _ = io.println("✓ Model initialized - Grid: 160x100, pixel scale: 6")
-  let _ = io.println("📊 Simulation: 4 phases per frame (1 complete Margolus iteration)")
-  model
 }
 
 // ============================================================================
@@ -56,35 +54,22 @@ fn init(_config: canvas.Config) -> Model {
 
 fn update(model: Model, evt: event.Event) -> Model {
   case evt {
-    event.Tick(_delta) -> {
+    event.Tick(delta) -> {
+      let new_fps = case delta >. 0.0 {
+        True -> 0.9 *. model.fps +. 0.1 /. delta
+        False -> model.fps
+      }
+      let timing = sim_bridge.get_worker_timing()
       case model.is_running && !model.paused {
         True -> {
-          let updated_state =
-            simulation.steps(model.sim_state, model.steps_per_frame)
-          let new_grid = simulation.grid(updated_state)
-          let step = simulation.step_count(updated_state)
-          let phase = simulation.phase(updated_state)
-          case step % 10 == 0 {
-            True -> {
-              let _ =
-                io.println(
-                  "📊 Step: "
-                  <> int.to_string(step)
-                  <> ", Phase: "
-                  <> int.to_string(phase),
-                )
-              Nil
-            }
-            False -> Nil
-          }
-          Model(..model, sim_state: updated_state, grid: new_grid)
+          let new_grid = sim_bridge.tick_simulation(model.steps_per_frame)
+          Model(..model, fps: new_fps, grid: new_grid, worker_timing: timing)
         }
-        False -> model
+        False -> Model(..model, fps: new_fps, worker_timing: timing)
       }
     }
 
     event.MousePressed(_button) -> {
-      let _ = io.println("🖱️ Mouse pressed")
       Model(..model, mouse_down: True)
     }
 
@@ -93,115 +78,93 @@ fn update(model: Model, evt: event.Event) -> Model {
         True -> {
           let pixel_x = float.round(x /. int.to_float(model.pixel_scale))
           let pixel_y = float.round(y /. int.to_float(model.pixel_scale))
-          let brush_name = case model.brush_type {
-            grid.Sand -> "Sand"
-            grid.Water -> "Water"
-            grid.Stone -> "Stone"
-            grid.Air -> "Air"
-            grid.Lava -> "Lava"
-            grid.Steam -> "Steam"
-            grid.Oil -> "Oil"
-            grid.Acid -> "Acid"
-            grid.Ice -> "Ice"
-          }
-          let _ =
-            io.println(
-              "✏️ Drawing "
-              <> brush_name
-              <> " at pixel ("
-              <> int.to_string(pixel_x)
-              <> ", "
-              <> int.to_string(pixel_y)
-              <> ")",
-            )
+          let type_idx = cell_type_index(model.brush_type)
           let new_grid =
-            renderer.draw_brush(
+            draw_brush_via_bridge(
               model.grid,
               pixel_x,
               pixel_y,
               model.brush_size,
-              model.brush_type,
+              type_idx,
             )
-          let new_cell = case model.brush_type {
-            grid.Sand -> grid.sand()
-            grid.Water -> grid.water()
-            grid.Stone -> grid.stone()
-            grid.Air -> grid.air()
-            grid.Lava -> grid.lava()
-            grid.Steam -> grid.steam()
-            grid.Oil -> grid.oil()
-            grid.Acid -> grid.acid()
-            grid.Ice -> grid.ice()
-          }
-          let new_sim =
-            simulation.set_cell(model.sim_state, pixel_x, pixel_y, new_cell)
-          Model(..model, grid: new_grid, sim_state: new_sim)
+          Model(..model, grid: new_grid)
         }
         False -> model
       }
     }
 
     event.MouseReleased(_button) -> {
-      let _ = io.println("🖱️ Mouse released")
       Model(..model, mouse_down: False)
     }
 
     event.KeyboardPressed(key) -> {
       case key {
         event.KeySpace -> {
-          let _ = io.println("⏯️ Space pressed - Starting simulation")
           Model(..model, is_running: True, paused: False)
         }
+        event.KeyEscape -> {
+          case model.is_running {
+            True -> {
+              Model(..model, paused: !model.paused)
+            }
+            False -> {
+              Model(..model, is_running: True, paused: False)
+            }
+          }
+        }
         event.KeyEnter | event.KeyBackspace -> {
-          let _ = io.println("🔄 Reset pressed - Clearing grid")
-          let fresh_grid = grid.filled_with_air(160, 100)
-          Model(
-            ..model,
-            sim_state: simulation.new(fresh_grid),
-            grid: fresh_grid,
-            is_running: False,
-            paused: False,
-          )
+          let fresh_grid = sim_bridge.reset_grid(160, 100)
+          Model(..model, grid: fresh_grid, is_running: False, paused: False)
         }
         event.KeyW -> {
-          let _ = io.println("💧 Water brush selected")
           Model(..model, brush_type: grid.Water)
         }
         event.KeyS -> {
-          let _ = io.println("🟫 Sand brush selected")
           Model(..model, brush_type: grid.Sand)
         }
         event.KeyX -> {
-          let _ = io.println("🪨 Stone brush selected")
           Model(..model, brush_type: grid.Stone)
         }
         event.KeyZ -> {
-          let _ = io.println("🗑️ Eraser selected")
           Model(..model, brush_type: grid.Air)
         }
         event.KeyA -> {
-          let _ = io.println("🧪 Acid brush selected")
           Model(..model, brush_type: grid.Acid)
         }
         event.KeyC -> {
-          let _ = io.println("❄️ Ice brush selected")
           Model(..model, brush_type: grid.Ice)
         }
         event.KeyD -> {
-          let _ = io.println("🛢️ Oil brush selected")
           Model(..model, brush_type: grid.Oil)
         }
-        _ -> {
-          let _ = io.println("⌨️ Unknown key pressed")
-          model
+        event.KeyUpArrow -> {
+          Model(..model, brush_type: grid.Steam)
+        }
+        event.KeyDownArrow -> {
+          Model(..model, brush_type: grid.Lava)
+        }
+        event.KeyLeftArrow -> {
+          let new_speed = case model.speed > 1 {
+            True -> model.speed - 1
+            False -> 1
+          }
+          let new_steps = new_speed * 4
+          let _ = sim_bridge.set_worker_config(new_steps)
+          Model(..model, speed: new_speed, steps_per_frame: new_steps)
+        }
+        event.KeyRightArrow -> {
+          let new_speed = case model.speed < 10 {
+            True -> model.speed + 1
+            False -> 10
+          }
+          let new_steps = new_speed * 4
+          let _ = sim_bridge.set_worker_config(new_steps)
+          Model(..model, speed: new_speed, steps_per_frame: new_steps)
         }
       }
     }
 
-    _ -> {
-      let _ = io.println("❓ Unknown event")
-      model
-    }
+    event.KeyboardRelased(_) -> model
   }
 }
 
@@ -219,11 +182,15 @@ fn view(model: Model) -> paint.Picture {
   }
 
   let info_text =
-    "Iteration: "
-    <> int.to_string(simulation.step_count(model.sim_state))
+    "FPS: "
+    <> int.to_string(float.round(model.fps))
+    <> " | Iter: "
+    <> int.to_string(sim_bridge.get_step_count())
     <> " | "
     <> status_text
-    <> " | Brush: "
+    <> " | Speed: "
+    <> int.to_string(model.speed)
+    <> "x | Brush: "
     <> case model.brush_type {
       grid.Sand -> "Sand"
       grid.Water -> "Water"
@@ -235,19 +202,31 @@ fn view(model: Model) -> paint.Picture {
       grid.Acid -> "Acid"
       grid.Ice -> "Ice"
     }
-    <> " | Keys: Space=Start, Enter=Reset, W=Water, S=Sand, X=Stone, Z=Eraser, A=Acid, C=Ice, D=Oil"
+    <> " | Space=Start Esc=Pause Enter=Reset ←/→=Speed W/S/X/Z/A/C/D/↑/↓=Brushes"
 
-  let _ = case simulation.step_count(model.sim_state) % 100 == 0 {
-    True -> io.println("🎨 Rendered frame, step: " <> int.to_string(simulation.step_count(model.sim_state)))
-    False -> Nil
+  let hud_y = int.to_float(100 * model.pixel_scale + 20)
+
+  let pictures = case model.worker_timing {
+    "" ->
+      [
+        game_picture,
+        paint.text(info_text, 12)
+          |> paint.translate_x(10.0)
+          |> paint.translate_y(hud_y),
+      ]
+    _ ->
+      [
+        game_picture,
+        paint.text(info_text, 12)
+          |> paint.translate_x(10.0)
+          |> paint.translate_y(hud_y),
+        paint.text(model.worker_timing, 11)
+          |> paint.translate_x(10.0)
+          |> paint.translate_y(hud_y +. 14.0),
+      ]
   }
 
-  paint.combine([
-    game_picture,
-    paint.text(info_text, 12)
-      |> paint.translate_x(10.0)
-      |> paint.translate_y(int.to_float(100 * model.pixel_scale + 20)),
-  ])
+  paint.combine(pictures)
 }
 
 // ============================================================================
@@ -255,10 +234,42 @@ fn view(model: Model) -> paint.Picture {
 // ============================================================================
 
 pub fn main() {
-  let _ = io.println("🚀 Lucy Game - Starting application...")
-  let _ = io.println("📍 Looking for canvas element: #game-canvas")
-  let _ = io.println("🎨 Initializing Paint canvas framework...")
   canvas.interact(init, update, view, "#game-canvas")
-  let _ = io.println("✓ Canvas interactive mode started!")
   Nil
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/// Convert CellType to index for bridge communication
+fn cell_type_index(ct: CellType) -> Int {
+  case ct {
+    grid.Air -> 0
+    grid.Sand -> 1
+    grid.Water -> 2
+    grid.Stone -> 3
+    grid.Lava -> 4
+    grid.Steam -> 5
+    grid.Oil -> 6
+    grid.Acid -> 7
+    grid.Ice -> 8
+  }
+}
+
+/// Draw a brush using the bridge (updates both local grid and worker)
+fn draw_brush_via_bridge(
+  grid: Grid,
+  cx: Int,
+  cy: Int,
+  radius: Int,
+  type_idx: Int,
+) -> Grid {
+  let ys = list.range(-radius, radius + 1)
+  let xs = list.range(-radius, radius + 1)
+  list.fold(ys, grid, fn(acc_grid, dy) {
+    list.fold(xs, acc_grid, fn(_acc, dx) {
+      sim_bridge.draw_cell(cx + dx, cy + dy, type_idx)
+    })
+  })
 }

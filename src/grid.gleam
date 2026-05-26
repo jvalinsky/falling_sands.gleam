@@ -122,8 +122,10 @@ pub fn set(grid: Grid, x: Int, y: Int, cell: Cell) -> Grid {
       // Only store non-air cells in sparse grid
       // This keeps memory usage O(active_cells) not O(width*height)
       let new_cells = case cell_type(cell) {
-        Air -> dict.delete(grid.cells, #(x, y))  // Remove air cells
-        _ -> dict.insert(grid.cells, #(x, y), cell)  // Store other types
+        Air -> dict.delete(grid.cells, #(x, y))
+        // Remove air cells
+        _ -> dict.insert(grid.cells, #(x, y), cell)
+        // Store other types
       }
       Grid(grid.width, grid.height, new_cells)
     }
@@ -134,15 +136,6 @@ pub fn set(grid: Grid, x: Int, y: Int, cell: Cell) -> Grid {
 /// Check if coordinates are within grid bounds
 pub fn is_in_bounds(grid: Grid, x: Int, y: Int) -> Bool {
   x >= 0 && x < grid.width && y >= 0 && y < grid.height
-}
-
-/// Swap two cells in the grid
-pub fn swap(grid: Grid, x1: Int, y1: Int, x2: Int, y2: Int) -> Grid {
-  let cell1 = get(grid, x1, y1)
-  let cell2 = get(grid, x2, y2)
-  grid
-  |> set(x1, y1, cell2)
-  |> set(x2, y2, cell1)
 }
 
 /// Get all cells as a list of (#(x, y), cell) tuples
@@ -158,7 +151,11 @@ pub fn get_cells(grid: Grid) -> Dict(#(Int, Int), Cell) {
 
 /// Create grid from dict (for internal use in simulation)
 @internal
-pub fn from_dict(width: Int, height: Int, cells: Dict(#(Int, Int), Cell)) -> Grid {
+pub fn from_dict(
+  width: Int,
+  height: Int,
+  cells: Dict(#(Int, Int), Cell),
+) -> Grid {
   Grid(width, height, cells)
 }
 
@@ -169,12 +166,9 @@ pub fn active_cell_count(grid: Grid) -> Int {
 
 /// Get stats about the grid (debugging)
 pub fn get_stats(grid: Grid) -> #(Int, Int, Int) {
-  let cells = grid.cells
-  let _total_stored = dict.size(cells)
-
   // Count by type (legacy - counts Sand, Water, Stone)
   let counts =
-    dict.fold(cells, #(0, 0, 0), fn(acc, _key, cell) {
+    dict.fold(grid.cells, #(0, 0, 0), fn(acc, _key, cell) {
       let #(sand_count, water_count, stone_count) = acc
       case cell_type(cell) {
         Sand -> #(sand_count + 1, water_count, stone_count)
